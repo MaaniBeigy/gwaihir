@@ -1,0 +1,31 @@
+[package]
+name = "gwaihir"
+version = "0.1.0"
+authors = ["MaaniBeigy <manibeygi@gmail.com>"]
+edition = "2018"
+description = "Essential Statistical Functions for Rust"
+readme = "README.md"
+license = "MIT/Apache-2.0"
+homepage = ""
+repository = ""
+keywords = [
+    "statistics", 
+    "summary", 
+    "data analysis", 
+    "descriptive statistics", 
+    "explore",
+]
+
+[features]
+default = []
+cache = []
+rwlock = []
+borrow = []
+fast = ["cache", "rwlock", "borrow"]
+
+[dependencies]
+GSL = "1.1.0"
+rayon = "1.1.0"
+bencher = "0.1.5"
+rand = "0.7.0"
+rand_xoshiro = "0.3.0"
