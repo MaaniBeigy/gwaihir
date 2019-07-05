@@ -1,4 +1,4 @@
-<img src="./gwaihir_goldeye.svg" align="right" width="114" />
+<img src="./gwaihir_goldeye.svg" align="right" width="192" />
 
 # gwaihir
 
