@@ -1,4 +1,4 @@
-# gamebus-coach
+# gwaihir
 
 `coach-api` is the GameBus 2026 Coach service: a single FastAPI app
 (`src.agents.app:app`) on port `8003` that runs a habit interview,
@@ -186,7 +186,7 @@ See [`.env.example`](.env.example) for the canonical list.
 ## Layout
 
 ```
-gamebus-coach/
+gwaihir/
 ├── app/
 │   ├── requirements.txt          # runtime deps
 │   └── requirements-dev.txt      # tests + lint + format (built into the dev stage)
