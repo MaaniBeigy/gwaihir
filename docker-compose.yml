@@ -1,0 +1,84 @@
+services:
+  coach-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.coach
+      target: runtime
+    ports:
+      - "8003:8003"
+    environment:
+      - COACH_REQUIRE_MTLS=false
+      - OPENROUTER_API_KEY
+      - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - COACH_MAX_SCHEDULE_ITERATIONS=${COACH_MAX_SCHEDULE_ITERATIONS:-3}
+      - INTERVIEWER_MODEL=${INTERVIEWER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - STANDARDIZER_MODEL=${STANDARDIZER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - SCHEDULER_MODEL=${SCHEDULER_MODEL:-}
+      - CONTROLLER_MODEL=${CONTROLLER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - SCHEDULING_PERIOD_WEEKS=${SCHEDULING_PERIOD_WEEKS:-1}
+      - COACH_INTERNAL_TOKEN=${COACH_INTERNAL_TOKEN:-dev-only}
+      - HF_HOME=/models
+    volumes:
+      - coach-models:/models
+    restart: unless-stopped
+    # GPU passthrough. Requires the NVIDIA Container Toolkit on the host
+    # (see README "GPU support" section). On hosts without it, comment this
+    # block out or unset COMPOSE_REQUIRE_GPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Dev/test/lint container. Built from the `dev` stage of Dockerfile.coach
+  # which adds pytest/black/isort/ruff on top of the runtime image.
+  # `profiles: [dev]` keeps it out of `docker compose up` — explicit
+  # `docker compose run --rm coach-dev ...` (or `--profile dev`) to use it.
+  coach-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.coach
+      target: dev
+    image: gamebus-coach:dev
+    profiles: ["dev"]
+    environment:
+      - COACH_REQUIRE_MTLS=false
+      - OPENROUTER_API_KEY
+      - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - COACH_MAX_SCHEDULE_ITERATIONS=${COACH_MAX_SCHEDULE_ITERATIONS:-3}
+      - INTERVIEWER_MODEL=${INTERVIEWER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - STANDARDIZER_MODEL=${STANDARDIZER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - SCHEDULER_MODEL=${SCHEDULER_MODEL:-}
+      - CONTROLLER_MODEL=${CONTROLLER_MODEL:-inclusionai/ling-2.6-1t:free}
+      - SCHEDULING_PERIOD_WEEKS=${SCHEDULING_PERIOD_WEEKS:-1}
+      - COACH_INTERNAL_TOKEN=${COACH_INTERNAL_TOKEN:-dev-only}
+      - HF_HOME=/models
+      - CHROMA_PATH=/app/chroma_db
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./app:/app/app:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./pytest.ini:/app/pytest.ini:ro
+      - coach-models:/models
+      # Bind-mount htmlcov so coverage HTML lands on the host directly.
+      # Created on first pytest --cov-report=html run.
+      - ./htmlcov:/app/htmlcov
+    working_dir: /app
+    entrypoint: []
+    command: ["bash"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  coach-models:

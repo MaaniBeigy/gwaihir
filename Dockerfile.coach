@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1.6
+#
+# Two stages:
+#   * runtime — the production image, built by Dockerfile.coach without --target.
+#               Slim, no test/lint deps. Used by docker-compose.yml and deploy/.
+#   * dev     — adds pytest, black, isort, ruff on top of runtime.
+#               Used by docker-compose.dev.yml so all dev/test/lint work
+#               happens inside the same container the service runs in.
+#               No local pip install required (and no MSVC build tools on Windows).
+
+ARG CUDA_BASE=nvidia/cuda:12.4.0-runtime-ubuntu22.04
+
+# --------------------------------------------------------------------------------------------------
+# Stage 1: runtime
+# --------------------------------------------------------------------------------------------------
+FROM ${CUDA_BASE} AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/models \
+    PYTHONPATH=/app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        ca-certificates \
+        curl \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY app/requirements.txt /app/app/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu124 \
+        torch==2.4.1 \
+    && python -m pip install --no-cache-dir -r /app/app/requirements.txt
+
+COPY . /app
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8003/health || exit 1
+
+EXPOSE 8003
+
+CMD ["uvicorn", "src.agents.app:app", "--host", "0.0.0.0", "--port", "8003"]
+
+
+# --------------------------------------------------------------------------------------------------
+# Stage 2: dev
+# --------------------------------------------------------------------------------------------------
+FROM runtime AS dev
+
+# Install dev deps on top of the runtime layer. This is fast because the heavy
+# wheels (chromadb, sentence-transformers, torch) are already cached above.
+COPY app/requirements-dev.txt /app/app/requirements-dev.txt
+RUN python -m pip install --no-cache-dir -r /app/app/requirements-dev.txt
+
+# Default to a shell so `docker compose run --rm coach-dev` drops you into
+# the container; CI/test commands explicitly override this CMD.
+CMD ["bash"]

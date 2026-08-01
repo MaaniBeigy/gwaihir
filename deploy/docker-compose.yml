@@ -1,0 +1,67 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:443:443"
+    networks: [coach-internal]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on: [coach-api]
+
+  coach-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.coach
+    restart: unless-stopped
+    networks: [coach-internal]
+    environment:
+      - COACH_REQUIRE_MTLS=true
+      - COACH_INTERNAL_TOKEN
+      - DEFAULT_LLM_PROVIDER=openrouter
+      - COACH_MAX_SCHEDULE_ITERATIONS
+      - INTERVIEWER_MODEL
+      - STANDARDIZER_MODEL
+      - SCHEDULER_MODEL
+      - CONTROLLER_MODEL
+      - SCHEDULING_PERIOD_WEEKS
+      - CHROMA_HOST=chroma-db
+      - CHROMA_PORT=8000
+      - COACH_MEMORY_RETENTION_DAYS=7
+      - COACH_WEBHOOK_URL
+      - COACH_WEBHOOK_CLIENT_CERT=/etc/coach/client.crt
+      - COACH_WEBHOOK_CLIENT_KEY=/etc/coach/client.key
+      - COACH_WEBHOOK_SERVER_CA=/etc/coach/gateway-server-ca.pem
+      - COACH_EXPECTED_PEER_CN=gamebus-api-v2
+      - HF_HOME=/models
+    volumes:
+      - coach-models:/models
+      - ./coach-certs:/etc/coach:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  chroma-db:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    networks: [coach-internal]
+    volumes:
+      - coach-chroma:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
+networks:
+  coach-internal:
+    driver: bridge
+
+volumes:
+  coach-chroma:
+    external: true
+  coach-models:
+    external: true

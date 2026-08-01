@@ -1,0 +1,126 @@
+# SCHEDULING PROTOCOL: placing GameBus challenge tasks into one person's week.
+
+## INPUT
+You receive, after this protocol:
+  - `## WAKING WINDOW`: the daily bracket. Never place a task outside it.
+  - `## DAY TIMELINES`: for each date, a list of `busy` events (the user's real
+    calendar) and the open `free` gaps between them inside the waking window. Each
+    `free` interval carries `duration_min`, the length of that gap. THESE ARE
+    GROUND TRUTH; do not invent free time that is not listed.
+  - `Payload.scheduler_task_sources.gamebus_tasks`: the tasks to place. Each has
+    `task_id`, `name`, `description`, `est_duration_min`. The description may end
+    with `[flags: duration_min=.. duration_max=.. intensity=.. concurrent_ok=..
+    dividable_ok=..]`; the flags win over any guess from the text.
+  - `Payload.scheduler_task_sources.user_context` (optional): observed signals
+    about the person for this week, grouped by category and date. See USER CONTEXT.
+  - `Payload.controller_feedback` (optional): specific problems found in your
+    previous attempt. Fix every one of them.
+
+## DEFAULT PATH (read this first)
+For each task, place it STANDALONE inside a `free` gap, UNLESS it is a genuine
+CONCURRENT fit with a `busy` event, in which case prefer the concurrent placement.
+Pick the better of the two, not standalone by default. The person has plenty of
+free time, so a standalone gap is always available as a fallback.
+
+CONCURRENT placement is allowed ONLY when one person can truly perform the task
+AND the event AT THE SAME TIME, or when the task is the SAME activity as the event
+done a certain way, or when a context makes it a fit. When `concurrent_ok=false`
+for a task, that task is ALWAYS standalone.
+
+Examples of PROPER concurrent fits:
+  • task "mindful eating" during event "Lunch": the person eats and pays attention
+    to the food at the same time.
+  • task "take the stairs" or "stand and stretch" during "Office Work": a micro-break
+    during prolonged seated time.
+  • task "drink a glass of water" during "Office Work" or "Meeting": a sip during a
+    seated event.
+  • a "walk 2000 steps" task during a "Walking" event: the same activity.
+
+Examples that are NOT proper fits:
+  • any active task (walk, run, workout) during "Dinner": you cannot do both at once.
+  • task "prepare a healthy snack" during "Lunch": preparation happens BEFORE a meal,
+    so place it standalone in the free gap right before that meal.
+  • any task during "Sleep" or "Commute": the slot or the body is taken.
+
+RULE OF THUMB 1: "during X", "while X", "with X" in a task name is a HINT, not a
+rule. Ask: can a person doing X also do this task at the same time? If NO, place the
+task STANDALONE in a free gap on the same day.
+
+RULE OF THUMB 2: a task that means preparation ("prepare X", "get ready for X",
+"before X") happens BEFORE the event. Place it standalone in the free gap right
+before that event, not inside it.
+
+RULE OF THUMB 3: when a task names the SAME activity as a busy event, only with a
+different amount, pace, or focus (e.g. "walk 2000 steps" and a "Walking" event),
+place the task CONCURRENT inside that event's window. When uncertain, choose
+STANDALONE.
+
+## USER CONTEXT
+`user_context` groups observed episodes by category, then by date, each as
+"name HH:MM-HH:MM". Use them to choose BETWEEN slots that are already valid:
+  • weather_environment: put outdoor tasks in a slot whose weather suits them.
+  • capability_opportunity: prefer a time the person has the capability and opportunity.
+  • behaviour_state: prefer a time the person is already active for an effortful task.
+  • goal_intention and sdt_regulation: prefer a time the person is motivated for a
+    hard task.
+Context never creates free time and never removes a busy interval. It only ranks
+slots that already satisfy every HARD CONSTRAINT. When no episode is relevant,
+schedule as you otherwise would.
+
+## SPREAD AND REPEATS
+SPREAD tasks across DIFFERENT days of the window; aim for one or two tasks per day.
+Schedule each task once in the window unless its text implies a per-day amount.
+
+## SPLIT BIG TASKS (only when dividable_ok=true)
+When a task's flags say `dividable_ok=true` and it is long (duration_min of 30 or
+more) or its text implies a per-day amount ("daily", "a day", "steps", "minutes"),
+split it into 2 or 3 shorter sessions on DIFFERENT days. Each session is its own
+assignment object with the SAME `task_id`, and together they add up to about the
+original duration. Never split a task whose flags say `dividable_ok=false`; place it
+as one block.
+
+## PLACEMENT
+For EACH task choose ONE approach:
+
+(1) STANDALONE: walk the day's DAY TIMELINE, take the first `free` interval whose
+    `duration_min` is at least the task's duration. Choose start and end inside that
+    gap and set `concurrent_with_event` to null.
+    Worked example: a 15 minute task and a free gap 13:00-17:00 -> place 13:00-13:15.
+
+(2) CONCURRENT: only when the task is a proper fit AND `concurrent_ok=true` AND it
+    sits fully inside the event. All must hold: event.start <= task.start,
+    task.end <= event.end, task.start < task.end. Set `concurrent_with_event` to the
+    busy interval's label verbatim.
+    Worked example: a "Walking" event 19:00-20:00 and a 15 minute steps task -> place
+    19:00-19:15. INVALID: 19:50-20:05 (runs past the event end).
+
+HARD CONSTRAINTS (any violation means choose another slot):
+  - duration: each placement lasts about the task's duration, at least 5 minutes.
+  - waking window: wake <= task.start AND task.end <= sleep.
+  - no overlap: a STANDALONE task must sit fully inside a `free` gap and must NOT
+    overlap any `busy` interval or any other task you placed that day.
+  - a CONCURRENT task must sit fully inside its host `busy` interval; each busy
+    interval hosts at most ONE concurrent task.
+  - at most one task with intensity >= 4 per date.
+
+## SCHEDULE EVERY TASK
+There is enough free time, so place every task somewhere this week. If no perfect
+slot exists, choose ANY free gap on ANY day that fits the duration. Leave a task out
+only when every day's free gaps are all shorter than the task's duration and no busy
+event is a proper concurrent host.
+
+## SELF-CHECK (do this silently, do not write it out)
+Before you finalize, re-check every placement: waking-window bounds, duration, that a
+standalone task sits inside a listed `free` gap and overlaps no `busy` interval, and
+for concurrent placements the event-containment inequalities. Fix any entry that fails.
+
+## OUTPUT (STRICT)
+Return ONLY a JSON object, no prose and no markdown:
+{"assignments": [
+  {"task_id": "<from input>", "type": "gamebus", "name": "<task name>",
+   "date": "YYYY-MM-DD", "start": "HH:MM", "end": "HH:MM",
+   "concurrent_with_event": "<busy label or null>"}
+]}
+One object per placement; a split task yields several objects that share its task_id.
+Use 24 hour times. Every date stays within the scheduling window. Output the JSON
+object only, with no comments or trailing text.

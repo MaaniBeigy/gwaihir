@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gamebus-coach"
+version = "0.1.0"
+description = "GameBus coach-api — habit interview, standardization, scheduling, and progress webhooks."
+requires-python = ">=3.11"
+
+# ---------------------------------------------------------------------------------------------
+# Formatting and linting
+# ---------------------------------------------------------------------------------------------
+
+[tool.black]
+line-length = 110
+target-version = ["py311"]
+include = "(src|tests)/.*\\.py$"
+
+[tool.isort]
+profile = "black"
+line_length = 110
+known_first_party = ["src"]
+src_paths = ["src", "tests"]
+skip = [".venv", "build", "dist"]
+
+# ---------------------------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------------------------
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = [
+    "src/__init__.py",
+    "src/agents/__init__.py",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
